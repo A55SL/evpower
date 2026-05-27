@@ -1,0 +1,16 @@
+# Environment secrets — never commit these
+.env
+receiver/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Docker
+*.log
+
+# macOS
+.DS_Store
