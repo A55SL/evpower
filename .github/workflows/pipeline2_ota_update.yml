@@ -102,6 +102,52 @@ jobs:
             fi
           fi
 
+      - name: Update Postman environment variable
+        env:
+          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          POSTMAN_ENV_ID:  ${{ secrets.POSTMAN_ENV_ID }}
+        run: |
+          if [ -z "$POSTMAN_API_KEY" ] || [ -z "$POSTMAN_ENV_ID" ]; then
+            echo "POSTMAN_API_KEY or POSTMAN_ENV_ID not set — skipping Postman update."
+          else
+            python3 - <<PYEOF
+          import os, json
+          from urllib import request, error
+
+          api_key    = os.environ["POSTMAN_API_KEY"]
+          env_id     = os.environ["POSTMAN_ENV_ID"]
+          new_fw     = os.environ["TARGET_FIRMWARE"]
+          base_url   = f"https://api.getpostman.com/environments/{env_id}"
+          headers    = {"X-Api-Key": api_key, "Content-Type": "application/json"}
+
+          # Fetch current environment so we don't wipe other variables
+          req = request.Request(base_url, headers=headers)
+          with request.urlopen(req) as resp:
+              env = json.loads(resp.read())
+
+          values = env["environment"]["values"]
+          found = False
+          for v in values:
+              if v["key"] == "firmware_ver":
+                  print(f"Updating firmware_ver: {v['value']} → {new_fw}")
+                  v["value"] = new_fw
+                  found = True
+                  break
+          if not found:
+              values.append({"key": "firmware_ver", "value": new_fw, "enabled": True})
+              print(f"firmware_ver not found in environment — added with value {new_fw}")
+
+          body = json.dumps({"environment": {"values": values}}).encode()
+          req = request.Request(base_url, data=body, headers=headers, method="PUT")
+          with request.urlopen(req) as resp:
+              result = json.loads(resp.read())
+
+          print(f"Postman environment '{result['environment']['name']}' updated.")
+          print(f"firmware_ver is now: {new_fw}")
+          print(f"Next time you hit Send in Postman, the charger will report {new_fw}.")
+          PYEOF
+          fi
+
       - name: Re-trigger Pipeline 1 with updated firmware
         run: |
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
