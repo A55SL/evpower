@@ -15,9 +15,37 @@ jobs:
       OCPP_VARIANT:    ${{ github.event.client_payload.ocpp_variant }}
       FIRMWARE_VER:    ${{ github.event.client_payload.firmware_ver }}
       RETRY_COUNT:     ${{ github.event.client_payload.retry_count }}
-      TARGET_FIRMWARE: "v2.0.0"
 
     steps:
+      - name: Fetch latest firmware package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Fetching latest firmware release..."
+          LATEST_TAG=$(gh release list \
+            --repo "${{ github.repository }}" \
+            --json tagName \
+            --jq '[.[] | select(.tagName | startswith("firmware-"))] | first | .tagName')
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "ERROR: No firmware releases found. Run Pipeline 3 first to build a firmware package."
+            exit 1
+          fi
+
+          echo "Latest firmware release: $LATEST_TAG"
+          mkdir -p /tmp/firmware
+          gh release download "$LATEST_TAG" \
+            --pattern "firmware.json" \
+            --dir /tmp/firmware \
+            --repo "${{ github.repository }}"
+
+          TARGET_FIRMWARE=$(jq -r '.version' /tmp/firmware/firmware.json)
+          echo "Fetched firmware version: $TARGET_FIRMWARE"
+          echo "TARGET_FIRMWARE=$TARGET_FIRMWARE" >> "$GITHUB_ENV"
+
+          echo "Firmware package contents:"
+          cat /tmp/firmware/firmware.json
+
       - name: Print OTA request details
         run: |
           echo "============================================"
