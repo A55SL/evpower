@@ -54,6 +54,26 @@ jobs:
           echo "$RESPONSE" | jq '.json // .'
           echo "OTA push complete — charger '$CHARGER_ID' is being updated to $TARGET_FIRMWARE."
 
+      - name: Callback to receiver with updated firmware
+        run: |
+          if [ -z "${{ secrets.RECEIVER_URL }}" ]; then
+            echo "RECEIVER_URL secret not set — skipping callback. Postman status will not update."
+          else
+            echo "Sending firmware update callback to receiver..."
+            HTTP_STATUS=$(curl -s -o /tmp/cb_response.json -w "%{http_code}" \
+              -X PATCH \
+              "${{ secrets.RECEIVER_URL }}/charger/$CHARGER_ID/firmware" \
+              -H "Content-Type: application/json" \
+              -d "{\"firmware_ver\": \"$TARGET_FIRMWARE\"}")
+            echo "Callback HTTP status: $HTTP_STATUS"
+            cat /tmp/cb_response.json
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "Receiver state updated — Postman can now see firmware_ver=$TARGET_FIRMWARE."
+            else
+              echo "WARNING: Callback returned $HTTP_STATUS — receiver state may not have updated."
+            fi
+          fi
+
       - name: Re-trigger Pipeline 1 with updated firmware
         run: |
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
