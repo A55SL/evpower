@@ -103,27 +103,40 @@ jobs:
           fi
 
       - name: Update Postman environment variable
+        continue-on-error: true
         env:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_ENV_ID:  ${{ secrets.POSTMAN_ENV_ID }}
         run: |
           if [ -z "$POSTMAN_API_KEY" ] || [ -z "$POSTMAN_ENV_ID" ]; then
             echo "POSTMAN_API_KEY or POSTMAN_ENV_ID not set — skipping Postman update."
-          else
-            python3 - <<PYEOF
+            exit 0
+          fi
+          python3 - <<'PYEOF'
           import os, json
-          from urllib import request, error
+          from urllib import request
+          from urllib.error import HTTPError
 
-          api_key    = os.environ["POSTMAN_API_KEY"]
-          env_id     = os.environ["POSTMAN_ENV_ID"]
-          new_fw     = os.environ["TARGET_FIRMWARE"]
-          base_url   = f"https://api.getpostman.com/environments/{env_id}"
-          headers    = {"X-Api-Key": api_key, "Content-Type": "application/json"}
+          api_key  = os.environ["POSTMAN_API_KEY"]
+          env_id   = os.environ["POSTMAN_ENV_ID"]
+          new_fw   = os.environ["TARGET_FIRMWARE"]
+          base_url = f"https://api.getpostman.com/environments/{env_id}"
+          headers  = {"X-Api-Key": api_key, "Content-Type": "application/json"}
 
-          # Fetch current environment so we don't wipe other variables
-          req = request.Request(base_url, headers=headers)
-          with request.urlopen(req) as resp:
-              env = json.loads(resp.read())
+          try:
+              req = request.Request(base_url, headers=headers)
+              with request.urlopen(req) as resp:
+                  env = json.loads(resp.read())
+          except HTTPError as e:
+              if e.code == 401:
+                  print("ERROR 401: POSTMAN_API_KEY is invalid or expired.")
+              elif e.code == 404:
+                  print(f"ERROR 404: Environment ID '{env_id}' not found.")
+                  print("  Check your POSTMAN_ENV_ID secret — it should be the ID")
+                  print("  after /environment/ in your Postman workspace URL.")
+              else:
+                  print(f"ERROR {e.code}: {e.reason}")
+              raise SystemExit(1)
 
           values = env["environment"]["values"]
           found = False
@@ -135,18 +148,20 @@ jobs:
                   break
           if not found:
               values.append({"key": "firmware_ver", "value": new_fw, "enabled": True})
-              print(f"firmware_ver not found in environment — added with value {new_fw}")
+              print(f"firmware_ver not found — adding it with value {new_fw}")
 
           body = json.dumps({"environment": {"values": values}}).encode()
           req = request.Request(base_url, data=body, headers=headers, method="PUT")
-          with request.urlopen(req) as resp:
-              result = json.loads(resp.read())
-
-          print(f"Postman environment '{result['environment']['name']}' updated.")
-          print(f"firmware_ver is now: {new_fw}")
-          print(f"Next time you hit Send in Postman, the charger will report {new_fw}.")
+          try:
+              with request.urlopen(req) as resp:
+                  result = json.loads(resp.read())
+              print(f"Postman environment '{result['environment']['name']}' updated.")
+              print(f"firmware_ver is now: {new_fw}")
+              print(f"Next Send in Postman will use firmware_ver = {new_fw}.")
+          except HTTPError as e:
+              print(f"ERROR updating environment: {e.code} {e.reason}")
+              raise SystemExit(1)
           PYEOF
-          fi
 
       - name: Re-trigger Pipeline 1 with updated firmware
         run: |
