@@ -54,8 +54,3 @@ jobs:
               "result": "FAILED"
             }'
           echo "OTA failed callback sent"
-
-    retry:
-      strategy:
-        max-attempts: 3
-      on-failure: retry
