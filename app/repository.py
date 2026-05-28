@@ -70,6 +70,7 @@ def update_charger_firmware(db: Session, charger_id: str, firmware_ver: str, sta
             return None
 
         charger.firmware_ver = firmware_ver
+        charger.ocpp_variant = firmware_ver
         charger.status = status
         charger.updated_at = datetime.now(timezone.utc)
         db.commit()
