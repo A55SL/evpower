@@ -1,0 +1,61 @@
+name: OTA Firmware Update
+
+on:
+  repository_dispatch:
+    types: [ota_update]
+
+jobs:
+  ota_update:
+    runs-on: ubuntu-latest
+
+    env:
+      CHARGER_ID: ${{ github.event.client_payload.charger_id }}
+      CURRENT_VERSION: ${{ github.event.client_payload.current_version }}
+      TARGET_VERSION: ${{ github.event.client_payload.target_version }}
+      SERVICE_CALLBACK_URL: ${{ secrets.SERVICE_CALLBACK_URL }}
+      API_KEY: ${{ secrets.API_KEY }}
+
+    steps:
+      - name: Log received payload
+        run: |
+          echo "Charger ID: $CHARGER_ID"
+          echo "Current Version: $CURRENT_VERSION"
+          echo "Target Version: $TARGET_VERSION"
+
+      - name: Simulate OTA update
+        id: ota
+        run: |
+          echo "Starting OTA update for charger $CHARGER_ID"
+          echo "Updating firmware $CURRENT_VERSION -> $TARGET_VERSION"
+          sleep 5
+          echo "result=SUCCESS" >> $GITHUB_OUTPUT
+          echo "OTA update completed successfully"
+
+      - name: Callback - OTA success
+        if: steps.ota.outputs.result == 'SUCCESS'
+        run: |
+          curl -X PATCH "$SERVICE_CALLBACK_URL/chargers/$CHARGER_ID/firmware" \
+            -H "X-API-Key: $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "firmware_ver": "'"$TARGET_VERSION"'",
+              "result": "SUCCESS"
+            }'
+          echo "OTA success callback sent"
+
+      - name: Callback - OTA failed
+        if: steps.ota.outputs.result == 'FAILED'
+        run: |
+          curl -X PATCH "$SERVICE_CALLBACK_URL/chargers/$CHARGER_ID/firmware" \
+            -H "X-API-Key: $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "firmware_ver": "'"$CURRENT_VERSION"'",
+              "result": "FAILED"
+            }'
+          echo "OTA failed callback sent"
+
+    retry:
+      strategy:
+        max-attempts: 3
+      on-failure: retry
