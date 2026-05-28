@@ -1,0 +1,57 @@
+name: Validate Charger OCPP
+
+on:
+  repository_dispatch:
+    types: [validate_charger]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    env:
+      CHARGER_ID: ${{ github.event.client_payload.charger_id }}
+      OCPP_VARIANT: ${{ github.event.client_payload.ocpp_variant }}
+      FIRMWARE_VER: ${{ github.event.client_payload.firmware_ver }}
+      SERVICE_CALLBACK_URL: ${{ secrets.SERVICE_CALLBACK_URL }}
+      API_KEY: ${{ secrets.API_KEY }}
+
+    steps:
+      - name: Log received payload
+        run: |
+          echo "Charger ID: $CHARGER_ID"
+          echo "OCPP Variant: $OCPP_VARIANT"
+          echo "Firmware Version: $FIRMWARE_VER"
+
+      - name: Validate OCPP version
+        id: validate
+        run: |
+          SUPPORTED_VERSIONS="2.0.0 2.0.1"
+          if echo "$SUPPORTED_VERSIONS" | grep -qw "$OCPP_VARIANT"; then
+            echo "result=success" >> $GITHUB_OUTPUT
+            echo "OCPP version $OCPP_VARIANT is supported"
+          else
+            echo "result=failed" >> $GITHUB_OUTPUT
+            echo "OCPP version $OCPP_VARIANT is NOT supported"
+          fi
+
+      - name: Callback - Validation success
+        if: steps.validate.outputs.result == 'success'
+        run: |
+          curl -X POST "$SERVICE_CALLBACK_URL/chargers/$CHARGER_ID/validate" \
+            -H "X-API-Key: $API_KEY" \
+            -H "Content-Type: application/json" \
+            -G \
+            --data-urlencode "ocpp_variant=$OCPP_VARIANT" \
+            --data-urlencode "firmware_ver=$FIRMWARE_VER"
+          echo "Validation success callback sent"
+
+      - name: Callback - Validation failed
+        if: steps.validate.outputs.result == 'failed'
+        run: |
+          curl -X POST "$SERVICE_CALLBACK_URL/chargers/$CHARGER_ID/validate" \
+            -H "X-API-Key: $API_KEY" \
+            -H "Content-Type: application/json" \
+            -G \
+            --data-urlencode "ocpp_variant=$OCPP_VARIANT" \
+            --data-urlencode "firmware_ver=$FIRMWARE_VER"
+          echo "Validation failed callback sent - OTA will be triggered by service"

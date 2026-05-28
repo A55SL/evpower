@@ -1,16 +1,30 @@
-# Environment secrets — never commit these
+# Environment variables - never commit these
 .env
-receiver/.env
 
 # Python
 __pycache__/
-*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+.Python
 *.egg-info/
-.venv/
+dist/
+build/
+
+# Virtual environment
 venv/
+.venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # Docker
 *.log
-
-# macOS
-.DS_Store
